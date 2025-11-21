@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Document Scanner Demo</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      img,
+      canvas {
+        max-width: 100%;
+        margin-top: 10px;
+        border: 1px solid #ccc;
+      }
+      pre {
+        background: #eee;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Document Scanner (WASM)</h2>
+
+    <input id="fileInput" type="file" accept="image/*" /><br /><br />
+    <button id="findBtn">Find Document</button>
+
+    <h3>Coords:</h3>
+    <pre id="coords"></pre>
+
+    <button id="extractBtn">Extract Document</button>
+
+    <h3>Original Image</h3>
+    <canvas id="canvas"></canvas>
+
+    <h3>Extracted Document</h3>
+    <canvas id="outputCanvas"></canvas>
+
+    <script type="module">
+      import init, {
+        find_document,
+        extract_document,
+        Quad as WasmQuad,
+      } from "./pkg/scanner.js";
+
+      await init();
+
+      const fileInput = document.getElementById("fileInput");
+      const findBtn = document.getElementById("findBtn");
+      const extractBtn = document.getElementById("extractBtn");
+      const canvas = document.getElementById("canvas");
+      const outputCanvas = document.getElementById("outputCanvas");
+      const ctx = canvas.getContext("2d");
+      const outCtx = outputCanvas.getContext("2d");
+
+      let lastArrayBuffer = null;
+      let lastQuad = null;
+      let lastImageBitmap = null;
+
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        // Read raw bytes
+        lastArrayBuffer = await file.arrayBuffer();
+
+        // For preview
+        const blob = new Blob([lastArrayBuffer], { type: file.type });
+        lastImageBitmap = await createImageBitmap(blob);
+
+        canvas.width = lastImageBitmap.width;
+        canvas.height = lastImageBitmap.height;
+        ctx.drawImage(lastImageBitmap, 0, 0);
+
+        document.getElementById("coords").textContent =
+          "Ready. Click Find Document.";
+      });
+
+      findBtn.addEventListener("click", () => {
+        if (!lastArrayBuffer) return alert("Select an image first!");
+
+        // Pass ArrayBuffer directly
+        const uint8 = new Uint8Array(lastArrayBuffer);
+        const start = performance.now();
+        const quad = find_document(uint8);
+        const end = performance.now();
+        console.log(`find_document took ${end - start} ms`);
+        console.log(quad);
+        if (!quad) {
+          document.getElementById("coords").textContent = "No document found!";
+          lastQuad = null;
+          return;
+        }
+
+        lastQuad = quad;
+
+        document.getElementById("coords").textContent = JSON.stringify(
+          {
+            a: quad.a,
+            b: quad.b,
+            c: quad.c,
+            d: quad.d,
+          },
+          null,
+          2
+        );
+
+        // Draw quad overlay
+        ctx.drawImage(lastImageBitmap, 0, 0);
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(quad.a.x, quad.a.y);
+        ctx.lineTo(quad.b.x, quad.b.y);
+        ctx.lineTo(quad.c.x, quad.c.y);
+        ctx.lineTo(quad.d.x, quad.d.y);
+        ctx.closePath();
+        ctx.stroke();
+      });
+
+      extractBtn.addEventListener("click", () => {
+        if (!lastArrayBuffer || !lastQuad)
+          return alert("Run Find Document first!");
+
+        const uint8 = new Uint8Array(lastArrayBuffer);
+        const targetWidth = 600;
+
+        const wasmQuad = new WasmQuad(
+          lastQuad.a.x,
+          lastQuad.a.y,
+          lastQuad.b.x,
+          lastQuad.b.y,
+          lastQuad.c.x,
+          lastQuad.c.y,
+          lastQuad.d.x,
+          lastQuad.d.y
+        );
+
+        const result = extract_document(uint8, wasmQuad, targetWidth);
+
+        const imageData = new ImageData(
+          new Uint8ClampedArray(result.data),
+          result.width,
+          result.height
+        );
+
+        outputCanvas.width = result.width;
+        outputCanvas.height = result.height;
+        outCtx.putImageData(imageData, 0, 0);
+      });
+    </script>
+  </body>
+</html>
