@@ -78,12 +78,14 @@
       });
 
       findBtn.addEventListener("click", () => {
-        if (!lastArrayBuffer) return alert("Select an image first!");
+        if (!lastImageBitmap) return alert("Select an image first!");
 
-        // Pass ArrayBuffer directly
-        const uint8 = new Uint8Array(lastArrayBuffer);
+        // Get ImageData from the canvas
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        // const uint8 = new Uint8Array(imageData.data.buffer);
+
         const start = performance.now();
-        const quad = find_document(uint8);
+        const quad = find_document(imageData);
         const end = performance.now();
         console.log(`find_document took ${end - start} ms`);
         console.log(quad);
@@ -120,12 +122,19 @@
       });
 
       extractBtn.addEventListener("click", () => {
-        if (!lastArrayBuffer || !lastQuad)
+        if (!lastImageBitmap || !lastQuad)
           return alert("Run Find Document first!");
 
-        const uint8 = new Uint8Array(lastArrayBuffer);
+        // 1. Get the actual ImageData object
+        const imageDat = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // REMOVED: const uint8 = new Uint8Array(imageDat.data.buffer);
+
         const targetWidth = 600;
 
+        // Ensure your WasmQuad constructor matches your Rust struct definition.
+        // If Rust doesn't have a specific constructor, you might need to pass the object differently,
+        // but assuming new WasmQuad(...) works for you:
         const wasmQuad = new WasmQuad(
           lastQuad.a.x,
           lastQuad.a.y,
@@ -137,7 +146,15 @@
           lastQuad.d.y
         );
 
-        const result = extract_document(uint8, wasmQuad, targetWidth);
+        // 2. Pass 'imageDat' directly.
+        // Note: You should also pass 'undefined' or 'null' for the 4th optional argument (target_height)
+        // to ensure argument counts match what wasm-bindgen expects.
+        const result = extract_document(
+          imageDat,
+          wasmQuad,
+          targetWidth,
+          undefined
+        );
 
         const imageData = new ImageData(
           new Uint8ClampedArray(result.data),
