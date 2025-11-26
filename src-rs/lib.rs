@@ -8,6 +8,21 @@ use web_sys::ImageData;
 
 mod image;
 use image::{Quad, RGBAImage};
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::slice;
+
+static mut SHARED_BUFFER: Vec<u8> = Vec::new();
+
+#[wasm_bindgen]
+pub fn alloc(len: usize) -> *const u8 {
+    unsafe {
+        if SHARED_BUFFER.len() < len {
+            SHARED_BUFFER.resize(len, 0);
+        }
+        SHARED_BUFFER.as_ptr()
+    }
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 compile_error!("Only compilable to WASM");
@@ -60,13 +75,13 @@ fn sum_sides(quad: Quad) -> (f32, f32) {
     (side, top)
 }
 
-impl From<ImageData> for RGBAImage {
+impl From<ImageData> for RGBAImage<'static> {
     fn from(data: ImageData) -> Self {
         let width = data.width() as usize;
         let height = data.height() as usize;
         let data = data.data().0;
         RGBAImage {
-            data,
+            data: Cow::Owned(data),
             width,
             height,
         }
@@ -124,6 +139,40 @@ pub fn find_document(data: ImageData) -> Option<Quad> {
 }
 
 #[wasm_bindgen]
+pub fn find_document_shared(width: usize, height: usize) -> Option<Quad> {
+    #[cfg(debug_assertions)]
+    console_error_panic_hook::set_once();
+    
+    let data = unsafe { slice::from_raw_parts(SHARED_BUFFER.as_ptr(), width * height * 4) };
+    let rgba = RGBAImage {
+        data: Cow::Borrowed(data),
+        width,
+        height,
+    };
+
+    let mut by = (rgba.width.min(rgba.height) as f32) / 360.0;
+    if by < 2.0 {
+        by = 1.0
+    }
+    let mut src = rgba.to_grayscale();
+    if by != 1.0 {
+        src = src.downscale(by);
+    }
+    src.gaussian().document().map(|doc| {
+        let mut doc = sort_quad(doc.quad);
+        doc.a.x *= by;
+        doc.a.y *= by;
+        doc.b.x *= by;
+        doc.b.y *= by;
+        doc.c.x *= by;
+        doc.c.y *= by;
+        doc.d.x *= by;
+        doc.d.y *= by;
+        doc
+    })
+}
+
+#[wasm_bindgen]
 pub fn extract_document(
     data: ImageData,
     region: Quad,
@@ -133,6 +182,38 @@ pub fn extract_document(
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
     let rgba: RGBAImage = data.into();
+    let target_height = if let Some(height) = target_height {
+        height
+    } else {
+        let (side, top) = sum_sides(region);
+        (side / top * (target_width as f32)) as usize
+    };
+    ImageData::new_with_u8_clamped_array_and_sh(
+        Clamped(&rgba.perspective(region, target_width, target_height).data),
+        target_width as u32,
+        target_height as u32,
+    )
+    .unwrap()
+}
+
+#[wasm_bindgen]
+pub fn extract_document_shared(
+    width: usize,
+    height: usize,
+    region: Quad,
+    target_width: usize,
+    target_height: Option<usize>,
+) -> ImageData {
+    #[cfg(debug_assertions)]
+    console_error_panic_hook::set_once();
+    
+    let data = unsafe { slice::from_raw_parts(SHARED_BUFFER.as_ptr(), width * height * 4) };
+    let rgba = RGBAImage {
+        data: Cow::Borrowed(data),
+        width,
+        height,
+    };
+
     let target_height = if let Some(height) = target_height {
         height
     } else {

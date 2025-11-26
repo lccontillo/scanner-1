@@ -39,12 +39,13 @@
 
     <script type="module">
       import init, {
-        find_document,
-        extract_document,
+        find_document_shared,
+        extract_document_shared,
+        alloc,
         Quad as WasmQuad,
       } from "./pkg/scanner.js";
 
-      await init();
+      const wasm = await init();
 
       const fileInput = document.getElementById("fileInput");
       const findBtn = document.getElementById("findBtn");
@@ -82,12 +83,17 @@
 
         // Get ImageData from the canvas
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // const uint8 = new Uint8Array(imageData.data.buffer);
+        const len = canvas.width * canvas.height * 4;
+        
+        const ptr = alloc(len);
+        const mem = new Uint8Array(wasm.memory.buffer);
+        mem.set(imageData.data, ptr);
 
         const start = performance.now();
-        const quad = find_document(imageData);
+        const quad = find_document_shared(canvas.width, canvas.height);
         const end = performance.now();
-        console.log(`find_document took ${end - start} ms`);
+        console.log(`find_document_shared took ${end - start} ms`);
+        alert(`find_document_shared took ${end - start} ms`);
         console.log(quad);
         if (!quad) {
           document.getElementById("coords").textContent = "No document found!";
@@ -149,8 +155,15 @@
         // 2. Pass 'imageDat' directly.
         // Note: You should also pass 'undefined' or 'null' for the 4th optional argument (target_height)
         // to ensure argument counts match what wasm-bindgen expects.
-        const result = extract_document(
-          imageDat,
+        
+        const len = canvas.width * canvas.height * 4;
+        const ptr = alloc(len);
+        const mem = new Uint8Array(wasm.memory.buffer);
+        mem.set(imageDat.data, ptr);
+
+        const result = extract_document_shared(
+          canvas.width,
+          canvas.height,
           wasmQuad,
           targetWidth,
           undefined

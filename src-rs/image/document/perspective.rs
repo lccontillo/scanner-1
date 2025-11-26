@@ -65,7 +65,7 @@ fn create_projector(from: Quad, to: Quad) -> impl Fn(Point) -> Point {
     }
 }
 
-pub fn perspective(source: &RGBAImage, quad: Quad, width: usize, height: usize) -> RGBAImage {
+pub fn perspective(source: &RGBAImage, quad: Quad, width: usize, height: usize) -> RGBAImage<'static> {
     let mut data = Vec::with_capacity((width * height) << 2);
     unsafe {
         data.set_len(data.capacity());
@@ -115,7 +115,7 @@ pub fn perspective(source: &RGBAImage, quad: Quad, width: usize, height: usize) 
         }
     }
     RGBAImage {
-        data,
+        data: alloc::borrow::Cow::Owned(data),
         width,
         height,
     }

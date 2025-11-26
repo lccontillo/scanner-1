@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Webcam Document Scanner</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #222;
+        color: #fff;
+      }
+      #container {
+        position: relative;
+        margin-top: 20px;
+      }
+      video {
+        display: block;
+        max-width: 100%;
+        border: 2px solid #555;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+      #stats {
+        margin-top: 10px;
+        font-size: 1.2em;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Webcam Document Scanner</h2>
+    <div id="stats">FPS: 0 | Time: 0ms</div>
+    <div id="container">
+      <video id="video" playsinline autoplay></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <!-- Hidden canvas for processing -->
+    <canvas id="processCanvas" style="display: none;"></canvas>
+
+    <script type="module">
+      import init, {
+        find_document_shared,
+        alloc,
+      } from "./pkg/scanner.js";
+
+      async function main() {
+        const wasm = await init();
+        
+        const video = document.getElementById("video");
+        const overlay = document.getElementById("overlay");
+        const processCanvas = document.getElementById("processCanvas");
+        const stats = document.getElementById("stats");
+        
+        const overlayCtx = overlay.getContext("2d");
+        const processCtx = processCanvas.getContext("2d", { willReadFrequently: true });
+
+        // Setup webcam
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          });
+          video.srcObject = stream;
+        } catch (err) {
+          console.error("Error accessing webcam:", err);
+          alert("Could not access webcam. Please ensure you have granted permission.");
+          return;
+        }
+
+        // Wait for video to be ready
+        await new Promise(resolve => {
+          video.onloadedmetadata = () => {
+            video.play();
+            resolve();
+          };
+        });
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        video.width = width;
+        video.height = height;
+        overlay.width = width;
+        overlay.height = height;
+        processCanvas.width = width;
+        processCanvas.height = height;
+
+        // Pre-allocate memory
+        const len = width * height * 4;
+        const ptr = alloc(len);
+        
+        let lastTime = performance.now();
+        let frames = 0;
+        let fps = 0;
+
+        function loop() {
+          const now = performance.now();
+          frames++;
+          if (now - lastTime >= 1000) {
+            fps = frames;
+            frames = 0;
+            lastTime = now;
+          }
+
+          // Draw video frame to processing canvas
+          processCtx.drawImage(video, 0, 0, width, height);
+          const imageData = processCtx.getImageData(0, 0, width, height);
+
+          // Copy to WASM memory
+          const mem = new Uint8Array(wasm.memory.buffer);
+          mem.set(imageData.data, ptr);
+
+          // Find document
+          const start = performance.now();
+          const quad = find_document_shared(width, height);
+          const end = performance.now();
+          const time = end - start;
+
+          // Update stats
+          stats.textContent = `FPS: ${fps} | Time: ${time.toFixed(2)}ms`;
+
+          // Draw overlay
+          overlayCtx.clearRect(0, 0, width, height);
+          if (quad) {
+            overlayCtx.strokeStyle = "#00ff00";
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(quad.a.x, quad.a.y);
+            overlayCtx.lineTo(quad.b.x, quad.b.y);
+            overlayCtx.lineTo(quad.c.x, quad.c.y);
+            overlayCtx.lineTo(quad.d.x, quad.d.y);
+            overlayCtx.closePath();
+            overlayCtx.stroke();
+            
+            // Draw corners
+            overlayCtx.fillStyle = "red";
+            [quad.a, quad.b, quad.c, quad.d].forEach(p => {
+                overlayCtx.beginPath();
+                overlayCtx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
+                overlayCtx.fill();
+            });
+          }
+
+          requestAnimationFrame(loop);
+        }
+
+        loop();
+      }
+
+      main();
+    </script>
+  </body>
+</html>

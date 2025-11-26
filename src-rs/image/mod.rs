@@ -34,17 +34,19 @@ impl Image {
     }
 }
 
-pub struct RGBAImage {
-    pub data: Vec<u8>,
+use alloc::borrow::Cow;
+
+pub struct RGBAImage<'a> {
+    pub data: Cow<'a, [u8]>,
     pub width: usize,
     pub height: usize,
 }
 
-impl RGBAImage {
+impl<'a> RGBAImage<'a> {
     pub fn to_grayscale(&self) -> Image {
         grayscale::grayscale(self)
     }
-    pub fn perspective(&self, quad: Quad, width: usize, height: usize) -> RGBAImage {
+    pub fn perspective(&self, quad: Quad, width: usize, height: usize) -> RGBAImage<'static> {
         document::perspective(self, quad, width, height)
     }
 }
