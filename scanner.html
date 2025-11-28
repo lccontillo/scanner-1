@@ -17,6 +17,8 @@
       #container {
         position: relative;
         margin-top: 20px;
+        /* allow JS scaling with transform so video + overlay stay aligned */
+        transform-origin: top left;
       }
       video {
         display: block;
@@ -68,7 +70,7 @@
       <canvas id="resultCanvas"></canvas>
       <br />
       <button
-        onclick="location.reload()"
+        id="scanAnotherBtn"
         style="
           padding: 10px 20px;
           margin-top: 10px;
@@ -110,8 +112,8 @@
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: "environment",
-              width: { ideal: 480 },
-              height: { ideal: 360 },
+              width: { ideal: 320 },
+              height: { ideal: 240 },
             },
           });
           video.srcObject = stream;
@@ -140,6 +142,22 @@
         overlay.height = height;
         processCanvas.width = width;
         processCanvas.height = height;
+
+        // Scale the visible display to make a low-res camera (240p) appear larger.
+        // Adjust `targetDisplayWidth` to enlarge/shrink the view (in CSS pixels).
+        // Scaling uses CSS transform on the container so both the video and overlay
+        // canvas are scaled together and stay correctly aligned.
+        (function applyDisplayScale() {
+          const containerEl = document.getElementById("container");
+          // Change this value to control display size (e.g., 640, 800, 1024)
+          const targetDisplayWidth = 640;
+          const scale = targetDisplayWidth / width;
+          containerEl.style.transform = `scale(${scale})`;
+          // Optionally, set the container's CSS size so surrounding layout accounts
+          // for the unscaled element dimensions (helps centering/layout).
+          containerEl.style.width = width + "px";
+          containerEl.style.height = height + "px";
+        })();
 
         // Pre-allocate memory
         const len = width * height * 4;
@@ -306,6 +324,26 @@
         }
 
         loop();
+
+        // Wire the "Scan Another" button so it resets internal state and
+        // resumes the scanning loop without reloading the page.
+        const scanAnotherBtn = document.getElementById("scanAnotherBtn");
+        if (scanAnotherBtn) {
+          scanAnotherBtn.addEventListener("click", () => {
+            // Hide result view and show camera container again
+            resultContainer.style.display = "none";
+            document.getElementById("container").style.display = "";
+            statusEl.style.display = "none";
+
+            // Reset detection state
+            isCaptured = false;
+            lastQuads = [];
+            stableStartTime = 0;
+
+            // Restart the loop to resume scanning
+            loop();
+          });
+        }
       }
 
       main();

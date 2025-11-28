@@ -1,0 +1,29 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const alloc: (a: number) => number;
+export const extract_document: (a: any, b: number, c: number, d: number) => any;
+export const extract_document_shared: (a: number, b: number, c: number, d: number, e: number) => any;
+export const find_document: (a: any) => number;
+export const find_document_shared: (a: number, b: number) => number;
+export const __wbg_get_point_x: (a: number) => number;
+export const __wbg_get_point_y: (a: number) => number;
+export const __wbg_get_quad_a: (a: number) => number;
+export const __wbg_get_quad_b: (a: number) => number;
+export const __wbg_get_quad_c: (a: number) => number;
+export const __wbg_get_quad_d: (a: number) => number;
+export const __wbg_point_free: (a: number, b: number) => void;
+export const __wbg_quad_free: (a: number, b: number) => void;
+export const __wbg_set_point_x: (a: number, b: number) => void;
+export const __wbg_set_point_y: (a: number, b: number) => void;
+export const __wbg_set_quad_a: (a: number, b: number) => void;
+export const __wbg_set_quad_b: (a: number, b: number) => void;
+export const __wbg_set_quad_c: (a: number, b: number) => void;
+export const __wbg_set_quad_d: (a: number, b: number) => void;
+export const quad_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_exn_store: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_start: () => void;
