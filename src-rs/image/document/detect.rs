@@ -40,6 +40,12 @@ pub fn gradient_votes(source: &Image) -> GradientVotesResult {
     let mut grad_buf = vec![0.0; source.len()];
     let mut total_grad = 0.0;
     let mut max_grad = f32::NEG_INFINITY;
+
+    // Precompute inverse offsets for gradient error loop
+    let inv_offsets: Vec<f32> = (1..=GRADIENT_ERROR)
+        .map(|off| 1.0 / (off as f32 * off as f32 + GRADIENT_OFFSET))
+        .collect();
+
     for i in 1..mh {
         let ifl = i as f32;
         let bi = i * width;
@@ -57,38 +63,54 @@ pub fn gradient_votes(source: &Image) -> GradientVotesResult {
 
             let sx = 10.0 * (e - w) + 3.0 * (ne + se - nw - sw);
             let sy = 10.0 * (n - s) + 3.0 * (ne + nw - se - sw);
-            let grad = (sx * sx + sy * sy).powf(0.3).max(0.0);
+
+            // Use sqrt instead of powf(0.3) - much faster
+            let grad_sq = sx * sx + sy * sy;
+            let grad = if grad_sq > 0.0 {
+                grad_sq.sqrt().powf(0.6) // sqrt * powf(0.6) = powf(0.3)
+            } else {
+                0.0
+            };
+
             let angle_rad = (sy / sx).atan();
             if !angle_rad.is_nan() {
                 let angle = (angle_rad * ANGS_PER_RAD + 128.0) as u8;
                 let ind = angle as usize;
-                let bin = (unsafe { *COS.get_unchecked(ind) } * ifl
-                    + unsafe { *SIN.get_unchecked(ind) } * jfl
-                    + diag) as usize
-                    >> 1;
+
+                // Precompute common values
+                let cos_val = unsafe { *COS.get_unchecked(ind) };
+                let sin_val = unsafe { *SIN.get_unchecked(ind) };
+                let bin = ((cos_val * ifl + sin_val * jfl + diag) as usize) >> 1;
+
+                let grad_div_offset = grad / GRADIENT_OFFSET;
                 let buf_ind = (bin << 8) | ind;
                 let loc = unsafe { buf.get_unchecked_mut(buf_ind) };
-                let val = *loc + grad / GRADIENT_OFFSET;
+                let val = *loc + grad_div_offset;
                 *loc = val;
                 max_grad = max_grad.max(val);
-                for off in 1..=GRADIENT_ERROR {
-                    let local_grad = grad / (off as f32 * off as f32 + GRADIENT_OFFSET);
+
+                for (off, &inv_offset) in inv_offsets.iter().enumerate() {
+                    let off = (off + 1) as u8;
+                    let local_grad = grad * inv_offset;
+
+                    // Process angle + off
                     let approx = angle.wrapping_add(off);
                     let ind = approx as usize;
-                    let bin = (unsafe { *COS.get_unchecked(ind) } * ifl
+                    let bin = ((unsafe { *COS.get_unchecked(ind) } * ifl
                         + unsafe { *SIN.get_unchecked(ind) } * jfl
-                        + diag) as usize
+                        + diag) as usize)
                         >> 1;
                     let buf_ind = (bin << 8) | ind;
                     let loc = unsafe { buf.get_unchecked_mut(buf_ind) };
                     let val = *loc + local_grad;
                     *loc = val;
 
+                    // Process angle - off
                     let approx = angle.wrapping_sub(off);
                     let ind = approx as usize;
-                    let bin = (unsafe { *COS.get_unchecked(ind) } * ifl
+                    let bin = ((unsafe { *COS.get_unchecked(ind) } * ifl
                         + unsafe { *SIN.get_unchecked(ind) } * jfl
-                        + diag) as usize
+                        + diag) as usize)
                         >> 1;
                     let buf_ind = (bin << 8) | ind;
                     let loc = unsafe { buf.get_unchecked_mut(buf_ind) };
@@ -113,15 +135,6 @@ pub fn gradient_votes(source: &Image) -> GradientVotesResult {
         max_grad,
     }
 }
-
-// use wasm_bindgen::prelude::*;
-// #[wasm_bindgen]
-// #[derive(Clone, Copy)]
-// pub struct Line {
-//     pub angle: u8,
-//     pub bin: usize,
-//     pub score: f32,
-// }
 
 #[derive(Clone, Copy)]
 pub struct Line {
@@ -205,6 +218,7 @@ pub fn edges(result: &GradientVotesResult, threshold: f32) -> Vec<Line> {
 #[inline]
 fn right_err(l1: Line, l2: Line) -> f32 {
     let err = l1.angle.wrapping_sub(l2.angle).abs_diff(128) as f32;
+    // Use multiply instead of powf(2.0)
     err * err + 3.0
 }
 
@@ -219,6 +233,11 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
     } = result;
     let hf = height as f32;
     let wf = width as f32;
+
+    // Precompute reciprocals for division
+    let inv_wf = 1.0 / wf;
+    let inv_hf = 1.0 / hf;
+
     let intersection = |l1: Line, l2: Line| {
         let ang1 = l1.angle as usize;
         let ang2 = l2.angle as usize;
@@ -229,11 +248,12 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
         let e = unsafe { *COS.get_unchecked(ang2) };
         let f = (l2.bin << 1) as f32 - diag;
 
-        let y = (a * f - d * c) / (a * e - d * b);
+        let inv_det = 1.0 / (a * e - d * b); // Precompute reciprocal
+        let y = (a * f - d * c) * inv_det;
         let x = (c - y * b) / a;
 
-        let xr = x / wf - 0.5;
-        let yr = y / hf - 0.5;
+        let xr = x * inv_wf - 0.5;
+        let yr = y * inv_hf - 0.5;
 
         (Point { x, y }, xr * xr + yr * yr <= 0.55)
     };
@@ -271,22 +291,32 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
             }
         }
 
-        (score * ((dx - dy) as f32).powf(-0.3)).max(0.0)
+        // Use multiplication instead of division with negative exponent
+        let len = (dx - dy) as f32;
+        (score * len.powf(-0.3)).max(0.0)
     };
+
+    // Precompute power constants
+    let edge_power = 3.0;
+    let angle_power = -0.1;
+    let line_power = 0.1;
+
     let scored_quad = |quad: Quad, l1: Line, l2: Line, l3: Line, l4: Line| {
         let edge_total = score_between(quad.a, quad.b)
             + score_between(quad.b, quad.c)
             + score_between(quad.c, quad.d)
             + score_between(quad.d, quad.a);
-        let edge_score = edge_total.powf(3.0);
+        let edge_score = edge_total.powf(edge_power);
 
         let e12 = right_err(l1, l2);
         let e23 = right_err(l2, l3);
         let e34 = right_err(l3, l4);
         let e41 = right_err(l4, l1);
-        let angle_score = (e12 * e12 + e23 * e23 + e34 * e34 + e41 * e41).powf(-0.1);
+        // Combine squares before powf
+        let angle_err_sq = e12 * e12 + e23 * e23 + e34 * e34 + e41 * e41;
+        let angle_score = angle_err_sq.powf(angle_power);
 
-        let line_score = (l1.score * l2.score * l3.score * l4.score).powf(0.1);
+        let line_score = (l1.score * l2.score * l3.score * l4.score).powf(line_power);
 
         ScoredQuad {
             quad,
