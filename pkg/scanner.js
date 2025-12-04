@@ -212,17 +212,28 @@ function isLikeNone(x) {
     return x === undefined || x === null;
 }
 /**
- * @param {ImageData} data
+ * @param {number} width
+ * @param {number} height
  * @param {Quad} region
  * @param {number} target_width
  * @param {number | null} [target_height]
  * @returns {ImageData}
  */
-export function extract_document(data, region, target_width, target_height) {
+export function extract_document_shared(width, height, region, target_width, target_height) {
     _assertClass(region, Quad);
     var ptr0 = region.__destroy_into_raw();
-    const ret = wasm.extract_document(data, ptr0, target_width, isLikeNone(target_height) ? 0x100000001 : (target_height) >>> 0);
+    const ret = wasm.extract_document_shared(width, height, ptr0, target_width, isLikeNone(target_height) ? 0x100000001 : (target_height) >>> 0);
     return ret;
+}
+
+/**
+ * @param {number} width
+ * @param {number} height
+ * @returns {Quad | undefined}
+ */
+export function find_document_yuv_shared(width, height) {
+    const ret = wasm.find_document_yuv_shared(width, height);
+    return ret === 0 ? undefined : Quad.__wrap(ret);
 }
 
 /**
@@ -236,17 +247,16 @@ export function find_document_shared(width, height) {
 }
 
 /**
- * @param {number} width
- * @param {number} height
+ * @param {ImageData} data
  * @param {Quad} region
  * @param {number} target_width
  * @param {number | null} [target_height]
  * @returns {ImageData}
  */
-export function extract_document_shared(width, height, region, target_width, target_height) {
+export function extract_document(data, region, target_width, target_height) {
     _assertClass(region, Quad);
     var ptr0 = region.__destroy_into_raw();
-    const ret = wasm.extract_document_shared(width, height, ptr0, target_width, isLikeNone(target_height) ? 0x100000001 : (target_height) >>> 0);
+    const ret = wasm.extract_document(data, ptr0, target_width, isLikeNone(target_height) ? 0x100000001 : (target_height) >>> 0);
     return ret;
 }
 

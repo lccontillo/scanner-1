@@ -6,6 +6,7 @@ export const extract_document: (a: any, b: number, c: number, d: number) => any;
 export const extract_document_shared: (a: number, b: number, c: number, d: number, e: number) => any;
 export const find_document: (a: any) => number;
 export const find_document_shared: (a: number, b: number) => number;
+export const find_document_yuv_shared: (a: number, b: number) => number;
 export const __wbg_get_point_x: (a: number) => number;
 export const __wbg_get_point_y: (a: number) => number;
 export const __wbg_get_quad_a: (a: number) => number;

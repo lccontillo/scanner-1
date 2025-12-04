@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Webcam Document Scanner (YUV)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #222;
+        color: #fff;
+      }
+      #container {
+        position: relative;
+        margin-top: 20px;
+        /* allow JS scaling with transform so video + overlay stay aligned */
+        transform-origin: top left;
+      }
+      video {
+        display: block;
+        max-width: 100%;
+        border: 2px solid #555;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+      #stats {
+        margin-top: 10px;
+        font-size: 1.2em;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Webcam Document Scanner (YUV)</h2>
+    <div id="stats">FPS: 0 | Time: 0ms</div>
+    <div
+      id="status"
+      style="
+        position: absolute;
+        top: 20px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-size: 1.5em;
+        display: none;
+      "
+    >
+      Scanning...
+    </div>
+    <div id="container">
+      <video id="video" playsinline autoplay></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <!-- Hidden canvas for processing -->
+    <canvas id="processCanvas" style="display: none"></canvas>
+
+    <div
+      id="resultContainer"
+      style="display: none; margin-top: 20px; text-align: center"
+    >
+      <h3>Captured Document</h3>
+      <canvas id="resultCanvas"></canvas>
+      <br />
+      <button
+        id="scanAnotherBtn"
+        style="
+          padding: 10px 20px;
+          margin-top: 10px;
+          font-size: 1.2em;
+          cursor: pointer;
+        "
+      >
+        Scan Another
+      </button>
+    </div>
+
+    <script type="module">
+      import init, {
+        find_document_yuv_shared,
+        extract_document_shared,
+        alloc,
+        Quad as WasmQuad,
+      } from "./pkg/scanner.js";
+
+      async function main() {
+        const wasm = await init();
+
+        const video = document.getElementById("video");
+        const overlay = document.getElementById("overlay");
+        const processCanvas = document.getElementById("processCanvas");
+        const stats = document.getElementById("stats");
+        const statusEl = document.getElementById("status");
+        const resultContainer = document.getElementById("resultContainer");
+        const resultCanvas = document.getElementById("resultCanvas");
+
+        const overlayCtx = overlay.getContext("2d");
+        const processCtx = processCanvas.getContext("2d", {
+          willReadFrequently: true,
+        });
+        const resultCtx = resultCanvas.getContext("2d");
+
+        // Setup webcam
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { ideal: 320 },
+              height: { ideal: 240 },
+            },
+          });
+          video.srcObject = stream;
+        } catch (err) {
+          console.error("Error accessing webcam:", err);
+          alert(
+            "Could not access webcam. Please ensure you have granted permission."
+          );
+          return;
+        }
+
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            video.play();
+            resolve();
+          };
+        });
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        video.width = width;
+        video.height = height;
+        overlay.width = width;
+        overlay.height = height;
+        processCanvas.width = width;
+        processCanvas.height = height;
+
+        // Scale the visible display to make a low-res camera (240p) appear larger.
+        (function applyDisplayScale() {
+          const containerEl = document.getElementById("container");
+          const targetDisplayWidth = 640;
+          const scale = targetDisplayWidth / width;
+          containerEl.style.transform = `scale(${scale})`;
+          containerEl.style.width = width + "px";
+          containerEl.style.height = height + "px";
+        })();
+
+        // Pre-allocate memory for Y plane (1 byte per pixel)
+        const len = width * height;
+        const ptr = alloc(len);
+
+        let lastTime = performance.now();
+        let frames = 0;
+        let fps = 0;
+
+        // Stability detection variables
+        let lastQuads = [];
+        const STABILITY_THRESHOLD = 10; // pixels
+        const STABILITY_FRAMES = 10; // Number of frames to check
+        const HOLD_DURATION = 1000; // ms
+        let stableStartTime = 0;
+        let isCaptured = false;
+
+        function dist(p1, p2) {
+          return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
+
+        function isStable(quad) {
+          if (lastQuads.length < STABILITY_FRAMES) {
+            lastQuads.push(quad);
+            return false;
+          }
+          lastQuads.shift();
+          lastQuads.push(quad);
+
+          // Check max movement of any corner across all stored frames
+          for (let i = 0; i < lastQuads.length - 1; i++) {
+            const q1 = lastQuads[i];
+            const q2 = lastQuads[i + 1];
+            if (
+              dist(q1.a, q2.a) > STABILITY_THRESHOLD ||
+              dist(q1.b, q2.b) > STABILITY_THRESHOLD ||
+              dist(q1.c, q2.c) > STABILITY_THRESHOLD ||
+              dist(q1.d, q2.d) > STABILITY_THRESHOLD
+            ) {
+              return false;
+            }
+          }
+          return true;
+        }
+
+        function loop() {
+          if (isCaptured) return;
+
+          const now = performance.now();
+          frames++;
+          if (now - lastTime >= 1000) {
+            fps = frames;
+            frames = 0;
+            lastTime = now;
+          }
+
+          // Draw video frame to processing canvas
+          processCtx.drawImage(video, 0, 0, width, height);
+          const imageData = processCtx.getImageData(0, 0, width, height);
+          const { data } = imageData;
+
+          // Convert to Y (Luminance)
+          const yData = new Uint8Array(width * height);
+          for (let i = 0; i < width * height; i++) {
+              const r = data[i * 4];
+              const g = data[i * 4 + 1];
+              const b = data[i * 4 + 2];
+              // Y = 0.299*R + 0.587*G + 0.114*B
+              yData[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+          }
+
+          // Copy to WASM memory
+          const mem = new Uint8Array(wasm.memory.buffer);
+          mem.set(yData, ptr);
+
+          // Find document (YUV)
+          const start = performance.now();
+          const quad = find_document_yuv_shared(width, height);
+          const end = performance.now();
+          const time = end - start;
+
+          // Update stats
+          stats.textContent = `FPS: ${fps} | Time: ${time.toFixed(2)}ms`;
+
+          // Draw overlay
+          overlayCtx.clearRect(0, 0, width, height);
+
+          if (quad) {
+            // Stability Logic
+            if (isStable(quad)) {
+              if (stableStartTime === 0) {
+                stableStartTime = now;
+              }
+
+              const elapsed = now - stableStartTime;
+              if (elapsed >= HOLD_DURATION) {
+                statusEl.textContent = "Capturing...";
+                statusEl.style.color = "#0f0";
+
+                // Capture!
+                isCaptured = true;
+
+                // Construct WasmQuad
+                const wasmQuad = new WasmQuad(
+                  quad.a.x,
+                  quad.a.y,
+                  quad.b.x,
+                  quad.b.y,
+                  quad.c.x,
+                  quad.c.y,
+                  quad.d.x,
+                  quad.d.y
+                );
+
+                const targetWidth = 800;
+                
+                // For extraction, we still need the full RGBA image data
+                // We need to re-upload the RGBA data to shared buffer because
+                // find_document_yuv_shared overwrote it (or used a smaller part of it)
+                // Actually, the shared buffer is just a big Vec<u8>.
+                // We need to make sure it's big enough for RGBA (width*height*4).
+                // alloc() handles resizing if needed.
+                const lenRGBA = width * height * 4;
+                const ptrRGBA = alloc(lenRGBA);
+                const memRGBA = new Uint8Array(wasm.memory.buffer);
+                memRGBA.set(imageData.data, ptrRGBA);
+
+                const result = extract_document_shared(
+                  width,
+                  height,
+                  wasmQuad,
+                  targetWidth,
+                  undefined
+                );
+
+                const resultImageData = new ImageData(
+                  new Uint8ClampedArray(result.data),
+                  result.width,
+                  result.height
+                );
+
+                resultCanvas.width = result.width;
+                resultCanvas.height = result.height;
+                resultCtx.putImageData(resultImageData, 0, 0);
+
+                resultContainer.style.display = "block";
+                document.getElementById("container").style.display = "none";
+                statusEl.style.display = "none";
+
+                return; // Stop loop
+              } else {
+                statusEl.textContent = "Hold Steady...";
+                statusEl.style.color = "yellow";
+                statusEl.style.display = "block";
+              }
+            } else {
+              stableStartTime = 0;
+              statusEl.textContent = "Scanning...";
+              statusEl.style.color = "white";
+              statusEl.style.display = "block";
+            }
+
+            overlayCtx.strokeStyle = stableStartTime > 0 ? "yellow" : "#00ff00";
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(quad.a.x, quad.a.y);
+            overlayCtx.lineTo(quad.b.x, quad.b.y);
+            overlayCtx.lineTo(quad.c.x, quad.c.y);
+            overlayCtx.lineTo(quad.d.x, quad.d.y);
+            overlayCtx.closePath();
+            overlayCtx.stroke();
+
+            // Draw corners
+            overlayCtx.fillStyle = "red";
+            [quad.a, quad.b, quad.c, quad.d].forEach((p) => {
+              overlayCtx.beginPath();
+              overlayCtx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
+              overlayCtx.fill();
+            });
+          } else {
+            stableStartTime = 0;
+            lastQuads = [];
+            statusEl.style.display = "none";
+          }
+
+          requestAnimationFrame(loop);
+        }
+
+        loop();
+
+        // Wire the "Scan Another" button so it resets internal state and
+        // resumes the scanning loop without reloading the page.
+        const scanAnotherBtn = document.getElementById("scanAnotherBtn");
+        if (scanAnotherBtn) {
+          scanAnotherBtn.addEventListener("click", () => {
+            // Hide result view and show camera container again
+            resultContainer.style.display = "none";
+            document.getElementById("container").style.display = "";
+            statusEl.style.display = "none";
+
+            // Reset detection state
+            isCaptured = false;
+            lastQuads = [];
+            stableStartTime = 0;
+
+            // Restart the loop to resume scanning
+            loop();
+          });
+        }
+      }
+
+      main();
+    </script>
+  </body>
+</html>

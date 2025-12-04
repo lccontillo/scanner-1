@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Document Scanner Demo (YUV)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      img,
+      canvas {
+        max-width: 100%;
+        margin-top: 10px;
+        border: 1px solid #ccc;
+      }
+      pre {
+        background: #eee;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Document Scanner (WASM - YUV)</h2>
+
+    <input id="fileInput" type="file" accept="image/*" /><br /><br />
+    <button id="findBtn">Find Document (YUV)</button>
+    <button id="downloadYBtn">Download Raw Y</button>
+
+    <h3>Coords:</h3>
+    <pre id="coords"></pre>
+
+    <button id="extractBtn">Extract Document</button>
+
+    <h3>Original Image</h3>
+    <canvas id="canvas"></canvas>
+
+    <h3>Y Plane</h3>
+    <canvas id="yCanvas"></canvas>
+
+    <h3>Extracted Document</h3>
+    <canvas id="outputCanvas"></canvas>
+
+    <script type="module">
+      import init, {
+        find_document_yuv_shared,
+        extract_document_shared,
+        alloc,
+        Quad as WasmQuad,
+      } from "./pkg/scanner.js";
+
+      const wasm = await init();
+
+      const fileInput = document.getElementById("fileInput");
+      const findBtn = document.getElementById("findBtn");
+      const downloadYBtn = document.getElementById("downloadYBtn");
+      const extractBtn = document.getElementById("extractBtn");
+      const canvas = document.getElementById("canvas");
+      const yCanvas = document.getElementById("yCanvas");
+      const outputCanvas = document.getElementById("outputCanvas");
+      const ctx = canvas.getContext("2d");
+      const yCtx = yCanvas.getContext("2d");
+      const outCtx = outputCanvas.getContext("2d");
+
+      let lastArrayBuffer = null;
+      let lastQuad = null;
+      let lastImageBitmap = null;
+      let lastYData = null;
+
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        // Read raw bytes
+        lastArrayBuffer = await file.arrayBuffer();
+
+        // For preview
+        const blob = new Blob([lastArrayBuffer], { type: file.type });
+        lastImageBitmap = await createImageBitmap(blob);
+
+        canvas.width = lastImageBitmap.width;
+        canvas.height = lastImageBitmap.height;
+        ctx.drawImage(lastImageBitmap, 0, 0);
+
+        document.getElementById("coords").textContent =
+          "Ready. Click Find Document.";
+      });
+
+      findBtn.addEventListener("click", () => {
+        if (!lastImageBitmap) return alert("Select an image first!");
+
+        // Get ImageData from the canvas
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const { width, height, data } = imageData;
+        
+        // Convert to Y (Luminance) and prepare display data
+        const yData = new Uint8Array(width * height);
+        const yDisplayData = new Uint8ClampedArray(width * height * 4);
+
+        for (let i = 0; i < width * height; i++) {
+            const r = data[i * 4];
+            const g = data[i * 4 + 1];
+            const b = data[i * 4 + 2];
+            // Y = 0.299*R + 0.587*G + 0.114*B
+            const y = 0.299 * r + 0.587 * g + 0.114 * b;
+            yData[i] = y;
+
+            // Grayscale for display
+            yDisplayData[i * 4] = y;
+            yDisplayData[i * 4 + 1] = y;
+            yDisplayData[i * 4 + 2] = y;
+            yDisplayData[i * 4 + 3] = 255;
+        }
+
+        lastYData = yData;
+
+        // Draw Y plane
+        yCanvas.width = width;
+        yCanvas.height = height;
+        const yImageData = new ImageData(yDisplayData, width, height);
+        yCtx.putImageData(yImageData, 0, 0);
+
+        const len = width * height; // 1 byte per pixel
+        const ptr = alloc(len);
+        const mem = new Uint8Array(wasm.memory.buffer);
+        mem.set(yData, ptr);
+
+        const start = performance.now();
+        const quad = find_document_yuv_shared(width, height);
+        const end = performance.now();
+        console.log(`find_document_yuv_shared took ${end - start} ms`);
+        alert(`find_document_yuv_shared took ${end - start} ms`);
+        console.log(quad);
+        if (!quad) {
+          document.getElementById("coords").textContent = "No document found!";
+          lastQuad = null;
+          return;
+        }
+
+        lastQuad = quad;
+
+        document.getElementById("coords").textContent = JSON.stringify(
+          {
+            a: quad.a,
+            b: quad.b,
+            c: quad.c,
+            d: quad.d,
+          },
+          null,
+          2
+        );
+
+        // Draw quad overlay on ORIGINAL image
+        ctx.drawImage(lastImageBitmap, 0, 0);
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(quad.a.x, quad.a.y);
+        ctx.lineTo(quad.b.x, quad.b.y);
+        ctx.lineTo(quad.c.x, quad.c.y);
+        ctx.lineTo(quad.d.x, quad.d.y);
+        ctx.closePath();
+        ctx.stroke();
+        
+        // Also draw quad on Y plane for reference
+        yCtx.strokeStyle = "red";
+        yCtx.lineWidth = 3;
+        yCtx.beginPath();
+        yCtx.moveTo(quad.a.x, quad.a.y);
+        yCtx.lineTo(quad.b.x, quad.b.y);
+        yCtx.lineTo(quad.c.x, quad.c.y);
+        yCtx.lineTo(quad.d.x, quad.d.y);
+        yCtx.closePath();
+        yCtx.stroke();
+      });
+
+      downloadYBtn.addEventListener("click", () => {
+        if (!lastYData) return alert("Run Find Document first to generate Y data!");
+        
+        const blob = new Blob([lastYData], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "image.y";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      extractBtn.addEventListener("click", () => {
+        if (!lastImageBitmap || !lastQuad)
+          return alert("Run Find Document first!");
+
+        // 1. Get the actual ImageData object
+        const imageDat = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        const targetWidth = 600;
+
+        const wasmQuad = new WasmQuad(
+          lastQuad.a.x,
+          lastQuad.a.y,
+          lastQuad.b.x,
+          lastQuad.b.y,
+          lastQuad.c.x,
+          lastQuad.c.y,
+          lastQuad.d.x,
+          lastQuad.d.y
+        );
+
+        // Pass 'imageDat' directly (RGBA for extraction)
+        const len = canvas.width * canvas.height * 4;
+        const ptr = alloc(len);
+        const mem = new Uint8Array(wasm.memory.buffer);
+        mem.set(imageDat.data, ptr);
+
+        const result = extract_document_shared(
+          canvas.width,
+          canvas.height,
+          wasmQuad,
+          targetWidth,
+          undefined
+        );
+
+        const imageData = new ImageData(
+          new Uint8ClampedArray(result.data),
+          result.width,
+          result.height
+        );
+
+        outputCanvas.width = result.width;
+        outputCanvas.height = result.height;
+        outCtx.putImageData(imageData, 0, 0);
+      });
+    </script>
+  </body>
+</html>

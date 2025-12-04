@@ -1,9 +1,10 @@
 /* tslint:disable */
 /* eslint-disable */
 export function find_document(data: ImageData): Quad | undefined;
-export function extract_document(data: ImageData, region: Quad, target_width: number, target_height?: number | null): ImageData;
-export function find_document_shared(width: number, height: number): Quad | undefined;
 export function extract_document_shared(width: number, height: number, region: Quad, target_width: number, target_height?: number | null): ImageData;
+export function find_document_yuv_shared(width: number, height: number): Quad | undefined;
+export function find_document_shared(width: number, height: number): Quad | undefined;
+export function extract_document(data: ImageData, region: Quad, target_width: number, target_height?: number | null): ImageData;
 export function alloc(len: number): number;
 export class Point {
   private constructor();
@@ -31,6 +32,7 @@ export interface InitOutput {
   readonly extract_document_shared: (a: number, b: number, c: number, d: number, e: number) => any;
   readonly find_document: (a: any) => number;
   readonly find_document_shared: (a: number, b: number) => number;
+  readonly find_document_yuv_shared: (a: number, b: number) => number;
   readonly __wbg_get_point_x: (a: number) => number;
   readonly __wbg_get_point_y: (a: number) => number;
   readonly __wbg_get_quad_a: (a: number) => number;

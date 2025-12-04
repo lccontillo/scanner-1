@@ -7,10 +7,10 @@ use wasm_bindgen::{prelude::*, Clamped};
 use web_sys::ImageData;
 
 mod image;
-use image::{Quad, RGBAImage};
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::slice;
+use image::{Image, Quad, RGBAImage};
 
 static mut SHARED_BUFFER: Vec<u8> = Vec::new();
 
@@ -35,7 +35,7 @@ fn compare_floats(a: f32, b: f32) -> Ordering {
 // This function now replicates your JS `fixquad` logic
 fn sort_quad(quad: Quad) -> Quad {
     let Quad { a, b, c, d } = quad;
-    
+
     // 1. Collect all points into an array
     let mut points = [a, b, c, d];
 
@@ -66,7 +66,7 @@ fn sort_quad(quad: Quad) -> Quad {
     }
 }
 
-// Kept for reference if you need to calculate aspect ratio, 
+// Kept for reference if you need to calculate aspect ratio,
 // but sort_quad no longer depends on it.
 fn sum_sides(quad: Quad) -> (f32, f32) {
     let Quad { a, b, c, d } = quad;
@@ -142,7 +142,7 @@ pub fn find_document(data: ImageData) -> Option<Quad> {
 pub fn find_document_shared(width: usize, height: usize) -> Option<Quad> {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
-    
+
     let data = unsafe { slice::from_raw_parts(SHARED_BUFFER.as_ptr(), width * height * 4) };
     let rgba = RGBAImage {
         data: Cow::Borrowed(data),
@@ -155,6 +155,42 @@ pub fn find_document_shared(width: usize, height: usize) -> Option<Quad> {
         by = 1.0
     }
     let mut src = rgba.to_grayscale();
+    if by != 1.0 {
+        src = src.downscale(by);
+    }
+    src.gaussian().document().map(|doc| {
+        let mut doc = sort_quad(doc.quad);
+        doc.a.x *= by;
+        doc.a.y *= by;
+        doc.b.x *= by;
+        doc.b.y *= by;
+        doc.c.x *= by;
+        doc.c.y *= by;
+        doc.d.x *= by;
+        doc.d.y *= by;
+        doc
+    })
+}
+
+#[wasm_bindgen]
+pub fn find_document_yuv_shared(width: usize, height: usize) -> Option<Quad> {
+    #[cfg(debug_assertions)]
+    console_error_panic_hook::set_once();
+
+    let data = unsafe { slice::from_raw_parts(SHARED_BUFFER.as_ptr(), width * height) };
+    let float_data: Vec<f32> = data.iter().map(|&p| p as f32 / 255.0).collect();
+
+    let mut src = Image {
+        data: float_data,
+        width,
+        height,
+    };
+
+    let mut by = (src.width.min(src.height) as f32) / 360.0;
+    if by < 2.0 {
+        by = 1.0
+    }
+
     if by != 1.0 {
         src = src.downscale(by);
     }
@@ -206,7 +242,7 @@ pub fn extract_document_shared(
 ) -> ImageData {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
-    
+
     let data = unsafe { slice::from_raw_parts(SHARED_BUFFER.as_ptr(), width * height * 4) };
     let rgba = RGBAImage {
         data: Cow::Borrowed(data),
