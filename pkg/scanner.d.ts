@@ -4,6 +4,7 @@ export function find_document(data: ImageData): Quad | undefined;
 export function extract_document_shared(width: number, height: number, region: Quad, target_width: number, target_height?: number | null): ImageData;
 export function find_document_yuv_shared(width: number, height: number): Quad | undefined;
 export function find_document_shared(width: number, height: number): Quad | undefined;
+export function apply_filter(data: ImageData, filter_type: string, sign_color_name?: string | null): ImageData;
 export function extract_document(data: ImageData, region: Quad, target_width: number, target_height?: number | null): ImageData;
 export function alloc(len: number): number;
 export class Point {
@@ -28,6 +29,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly alloc: (a: number) => number;
+  readonly apply_filter: (a: any, b: number, c: number, d: number, e: number) => any;
   readonly extract_document: (a: any, b: number, c: number, d: number) => any;
   readonly extract_document_shared: (a: number, b: number, c: number, d: number, e: number) => any;
   readonly find_document: (a: any) => number;

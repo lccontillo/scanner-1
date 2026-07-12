@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const alloc: (a: number) => number;
+export const apply_filter: (a: any, b: number, c: number, d: number, e: number) => any;
 export const extract_document: (a: any, b: number, c: number, d: number) => any;
 export const extract_document_shared: (a: number, b: number, c: number, d: number, e: number) => any;
 export const find_document: (a: any) => number;

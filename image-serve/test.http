@@ -1,0 +1,3 @@
+### Get RGBA JSON data
+GET http://localhost:3000/image/one.png/rgba
+Accept: application/json

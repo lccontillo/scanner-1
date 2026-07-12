@@ -4,38 +4,440 @@
     <meta charset="utf-8" />
     <title>Document Scanner Demo</title>
     <style>
-      body {
-        font-family: sans-serif;
-        padding: 20px;
+      :root {
+        --bg-color: #0b0f19;
+        --card-bg: #151d30;
+        --card-bg-hover: #1e2942;
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --accent: #4f46e5;
+        --accent-hover: #6366f1;
+        --border-color: #24324f;
       }
-      img,
+
+      body {
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        padding: 40px 20px;
+        max-width: 1000px;
+        margin: 0 auto;
+        line-height: 1.6;
+      }
+
+      h2 {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin-bottom: 25px;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        letter-spacing: -0.025em;
+      }
+
+      .container {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 30px;
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+      }
+
+      h3 {
+        font-size: 1.25rem;
+        color: var(--text-primary);
+        margin-top: 0;
+        margin-bottom: 12px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn {
+        background-color: var(--accent);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .btn:hover {
+        background-color: var(--accent-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.4);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn-secondary {
+        background-color: #1e293b;
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+      }
+
+      .btn-secondary:hover {
+        background-color: #334155;
+        box-shadow: none;
+      }
+
+      .file-upload-wrapper {
+        position: relative;
+        margin-bottom: 25px;
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      .file-upload-label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--border-color);
+        padding: 30px 20px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: rgba(15, 23, 42, 0.3);
+      }
+
+      .file-upload-label:hover {
+        border-color: var(--accent);
+        background: rgba(99, 102, 241, 0.05);
+      }
+
+      .file-upload-label span.primary {
+        font-weight: 600;
+        color: var(--accent-hover);
+        margin-bottom: 4px;
+      }
+
+      .file-upload-label span.secondary {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
+
+      .grid-layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 30px;
+        margin-top: 30px;
+      }
+
+      @media (min-width: 768px) {
+        .grid-layout {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      .canvas-card {
+        background: rgba(15, 23, 42, 0.2);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+      }
+
       canvas {
         max-width: 100%;
-        margin-top: 10px;
-        border: 1px solid #ccc;
+        display: block;
+        margin-top: auto;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background-color: #020617;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
       }
+
       pre {
-        background: #eee;
+        background: #090d16;
+        color: #38bdf8;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        font-family: 'Fira Code', Consolas, Monaco, monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+        max-height: 120px;
+      }
+
+      .filters-container {
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+      }
+
+      .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px;
+        margin-top: 15px;
+      }
+
+      .filter-btn {
+        background: #101726;
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+
+      .filter-btn:hover:not(:disabled) {
+        background: var(--card-bg-hover);
+        color: var(--text-primary);
+        border-color: var(--accent);
+      }
+
+      .filter-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+      }
+
+      .filter-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 25px;
+      }
+
+      /* Engine panel styling */
+      .engine-panel {
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 15px;
+        margin-top: 15px;
+      }
+
+      .engine-toggle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .panel-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      /* Custom toggle switch style */
+      .toggle-switch {
+        position: relative;
+        width: 240px;
+        height: 34px;
+        background: #090d16;
+        border-radius: 17px;
+        padding: 2px;
+        cursor: pointer;
+        border: 1px solid var(--border-color);
+      }
+
+      .toggle-switch input {
+        display: none;
+      }
+
+      .switch-label {
+        display: flex;
+        position: relative;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        font-weight: 700;
+        user-select: none;
+      }
+
+      .toggle-text {
+        flex: 1;
+        text-align: center;
+        z-index: 2;
+        transition: color 0.2s ease;
+        color: var(--text-secondary);
+      }
+
+      .switch-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 50%;
+        height: 100%;
+        background: var(--accent);
+        border-radius: 15px;
+        z-index: 1;
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+      }
+
+      #engineToggle:checked + .switch-label .switch-handle {
+        transform: translateX(100%);
+      }
+
+      #engineToggle:checked + .switch-label .wasm {
+        color: white;
+      }
+
+      #engineToggle:not(:checked) + .switch-label .js {
+        color: white;
+      }
+
+      /* Benchmark stats */
+      .benchmark-stats {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(10, 15, 26, 0.5);
         padding: 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.02);
+      }
+
+      .stat-box {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-bottom: 2px;
+      }
+
+      .stat-val {
+        font-size: 0.9rem;
+        font-weight: 700;
+        font-family: 'Fira Code', monospace;
+      }
+
+      #jsTime {
+        color: #f59e0b; /* Amber */
+      }
+
+      #wasmTime {
+        color: #10b981; /* Emerald */
+      }
+
+      .accent-box .stat-val {
+        color: #a855f7; /* Purple */
+      }
+
+      .stat-divider {
+        width: 1px;
+        height: 25px;
+        background: var(--border-color);
       }
     </style>
   </head>
   <body>
-    <h2>Document Scanner (WASM)</h2>
+    <div class="container">
+      <h2>Document Scanner & Filter</h2>
 
-    <input id="fileInput" type="file" accept="image/*" /><br /><br />
-    <button id="findBtn">Find Document</button>
+      <div class="file-upload-wrapper">
+        <label for="fileInput" class="file-upload-label">
+          <span class="primary">Choose an image file</span>
+          <span class="secondary" id="fileName">accepts image/*</span>
+        </label>
+        <input id="fileInput" type="file" accept="image/*" />
+      </div>
 
-    <h3>Coords:</h3>
-    <pre id="coords"></pre>
+      <div class="button-group">
+        <button id="findBtn" class="btn">Find Document</button>
+        <button id="extractBtn" class="btn btn-secondary">Extract Document</button>
+      </div>
 
-    <button id="extractBtn">Extract Document</button>
+      <h3>Coords:</h3>
+      <pre id="coords">Ready. Select an image.</pre>
 
-    <h3>Original Image</h3>
-    <canvas id="canvas"></canvas>
+      <div class="grid-layout">
+        <div class="canvas-card">
+          <h3>Original Image</h3>
+          <canvas id="canvas"></canvas>
+        </div>
 
-    <h3>Extracted Document</h3>
-    <canvas id="outputCanvas"></canvas>
+        <div class="canvas-card">
+          <h3>Extracted Document</h3>
+          <canvas id="outputCanvas"></canvas>
+
+          <!-- Engine Toggle and Benchmark Panel -->
+          <div class="engine-panel">
+            <div class="engine-toggle-row">
+              <span class="panel-title">Filter Engine:</span>
+              <div class="toggle-switch">
+                <input type="checkbox" id="engineToggle" checked />
+                <label for="engineToggle" class="switch-label">
+                  <span class="toggle-text js">JS (Canvas)</span>
+                  <span class="toggle-text wasm">Rust (WASM)</span>
+                  <span class="switch-handle"></span>
+                </label>
+              </div>
+            </div>
+            
+            <div class="benchmark-stats">
+              <div class="stat-box">
+                <span class="stat-label">JS (Canvas)</span>
+                <span class="stat-val" id="jsTime">0.00 ms</span>
+              </div>
+              <div class="stat-divider"></div>
+              <div class="stat-box">
+                <span class="stat-label">Rust (WASM)</span>
+                <span class="stat-val" id="wasmTime">0.00 ms</span>
+              </div>
+              <div class="stat-divider"></div>
+              <div class="stat-box accent-box">
+                <span class="stat-label" id="comparisonLabel">Comparison</span>
+                <span class="stat-val" id="comparisonVal">-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filters Section -->
+          <div class="filters-container">
+            <h4 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-primary);">Document Filters</h4>
+            <div class="filters-grid">
+              <button class="filter-btn" data-filter="original" disabled>Original</button>
+              <button class="filter-btn" data-filter="magic" disabled>Magic Color</button>
+              <button class="filter-btn" data-filter="bw" disabled>B&W</button>
+              <button class="filter-btn" data-filter="gray" disabled>Grayscale</button>
+              <button class="filter-btn" data-filter="photo" disabled>Photo</button>
+              <button class="filter-btn" data-filter="sign-black" disabled>Sign (Black)</button>
+              <button class="filter-btn" data-filter="sign-red" disabled>Sign (Red)</button>
+              <button class="filter-btn" data-filter="sign-blue" disabled>Sign (Blue)</button>
+              <button class="filter-btn" data-filter="sign-purple" disabled>Sign (Purple)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module">
       import init, {
@@ -43,7 +445,9 @@
         extract_document_shared,
         alloc,
         Quad as WasmQuad,
+        apply_filter,
       } from "./pkg/scanner.js";
+      import { filterCanvas } from "./utils/filters.js";
 
       const wasm = await init();
 
@@ -58,10 +462,42 @@
       let lastArrayBuffer = null;
       let lastQuad = null;
       let lastImageBitmap = null;
+      let unfilteredDataUrl = null;
+      let unfilteredImageData = null;
+
+      function disableFilters() {
+        const filterBtns = document.querySelectorAll(".filter-btn");
+        filterBtns.forEach(btn => {
+          btn.disabled = true;
+          btn.classList.remove("active");
+        });
+        unfilteredDataUrl = null;
+        unfilteredImageData = null;
+        document.getElementById("jsTime").textContent = "0.00 ms";
+        document.getElementById("wasmTime").textContent = "0.00 ms";
+        document.getElementById("comparisonVal").textContent = "-";
+      }
+
+      function enableFilters() {
+        const filterBtns = document.querySelectorAll(".filter-btn");
+        filterBtns.forEach(btn => {
+          btn.disabled = false;
+        });
+        const originalBtn = document.querySelector('.filter-btn[data-filter="original"]');
+        if (originalBtn) {
+          originalBtn.classList.add("active");
+        }
+      }
 
       fileInput.addEventListener("change", async () => {
         const file = fileInput.files[0];
         if (!file) return;
+
+        // Update file label text
+        document.getElementById("fileName").textContent = file.name;
+        document.querySelector(".file-upload-label .primary").textContent = "Change selected image";
+
+        disableFilters();
 
         // Read raw bytes
         lastArrayBuffer = await file.arrayBuffer();
@@ -80,6 +516,8 @@
 
       findBtn.addEventListener("click", () => {
         if (!lastImageBitmap) return alert("Select an image first!");
+
+        disableFilters();
 
         // Get ImageData from the canvas
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -134,13 +572,8 @@
         // 1. Get the actual ImageData object
         const imageDat = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // REMOVED: const uint8 = new Uint8Array(imageDat.data.buffer);
-
         const targetWidth = 600;
 
-        // Ensure your WasmQuad constructor matches your Rust struct definition.
-        // If Rust doesn't have a specific constructor, you might need to pass the object differently,
-        // but assuming new WasmQuad(...) works for you:
         const wasmQuad = new WasmQuad(
           lastQuad.a.x,
           lastQuad.a.y,
@@ -151,10 +584,6 @@
           lastQuad.d.x,
           lastQuad.d.y
         );
-
-        // 2. Pass 'imageDat' directly.
-        // Note: You should also pass 'undefined' or 'null' for the 4th optional argument (target_height)
-        // to ensure argument counts match what wasm-bindgen expects.
         
         const len = canvas.width * canvas.height * 4;
         const ptr = alloc(len);
@@ -178,6 +607,113 @@
         outputCanvas.width = result.width;
         outputCanvas.height = result.height;
         outCtx.putImageData(imageData, 0, 0);
+
+        // Store raw extracted canvas data and data URL for filtering
+        unfilteredImageData = imageData;
+        unfilteredDataUrl = outputCanvas.toDataURL();
+        enableFilters();
+      });
+
+      // Filter handling
+      const filter = filterCanvas();
+      const filterBtns = document.querySelectorAll(".filter-btn");
+      const engineToggle = document.getElementById("engineToggle");
+      let activeFilterType = "original";
+
+      async function applyCurrentFilter() {
+        if (!unfilteredDataUrl || !unfilteredImageData) return;
+
+        const filterType = activeFilterType;
+        let resultCanvas = null;
+        let wasmResultImageData = null;
+
+        let jsDuration = 0;
+        let wasmDuration = 0;
+
+        // 1. Measure JS (Canvas) implementation
+        const jsStart = performance.now();
+        try {
+          if (filterType === "original") {
+            resultCanvas = await filter.original(unfilteredDataUrl);
+          } else if (filterType === "magic") {
+            resultCanvas = await filter.magic(unfilteredDataUrl);
+          } else if (filterType === "bw") {
+            resultCanvas = await filter.bw(unfilteredDataUrl);
+          } else if (filterType === "gray") {
+            resultCanvas = await filter.gray(unfilteredDataUrl);
+          } else if (filterType === "photo") {
+            resultCanvas = await filter.photo(unfilteredDataUrl);
+          } else if (filterType.startsWith("sign-")) {
+            const color = filterType.replace("sign-", "");
+            resultCanvas = await filter.sign(unfilteredDataUrl, color);
+          }
+          jsDuration = performance.now() - jsStart;
+          document.getElementById("jsTime").textContent = jsDuration.toFixed(2) + " ms";
+        } catch (err) {
+          console.error("JS filter error:", err);
+          document.getElementById("jsTime").textContent = "Error";
+        }
+
+        // 2. Measure Rust (WASM) implementation
+        const wasmStart = performance.now();
+        try {
+          const rustType = filterType.startsWith("sign-") ? "sign" : filterType;
+          const signColor = filterType.startsWith("sign-") ? filterType.replace("sign-", "") : null;
+          wasmResultImageData = apply_filter(unfilteredImageData, rustType, signColor);
+          wasmDuration = performance.now() - wasmStart;
+          document.getElementById("wasmTime").textContent = wasmDuration.toFixed(2) + " ms";
+        } catch (err) {
+          console.error("WASM filter error:", err);
+          document.getElementById("wasmTime").textContent = "Error";
+        }
+
+        // 3. Update Comparison stats
+        if (jsDuration > 0 && wasmDuration > 0) {
+          const ratio = jsDuration / wasmDuration;
+          if (ratio > 1) {
+            document.getElementById("comparisonLabel").textContent = "WASM Speedup";
+            document.getElementById("comparisonVal").textContent = ratio.toFixed(1) + "x faster";
+            document.getElementById("comparisonVal").style.color = "#10b981"; // green
+          } else {
+            document.getElementById("comparisonLabel").textContent = "JS Speedup";
+            document.getElementById("comparisonVal").textContent = (1 / ratio).toFixed(1) + "x faster";
+            document.getElementById("comparisonVal").style.color = "#f59e0b"; // amber
+          }
+        } else {
+          document.getElementById("comparisonVal").textContent = "-";
+          document.getElementById("comparisonVal").style.color = "var(--text-secondary)";
+        }
+
+        // 4. Render the selected engine's output
+        const useWasm = engineToggle.checked;
+        if (useWasm && wasmResultImageData) {
+          outputCanvas.width = wasmResultImageData.width;
+          outputCanvas.height = wasmResultImageData.height;
+          outCtx.putImageData(wasmResultImageData, 0, 0);
+        } else if (!useWasm && resultCanvas) {
+          outputCanvas.width = resultCanvas.width;
+          outputCanvas.height = resultCanvas.height;
+          outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+          outCtx.drawImage(resultCanvas, 0, 0);
+        }
+      }
+
+      // Re-render when engine toggle is changed
+      engineToggle.addEventListener("change", () => {
+        applyCurrentFilter();
+      });
+
+      filterBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (!unfilteredDataUrl) return;
+
+          // Update active button state
+          filterBtns.forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+
+          activeFilterType = btn.getAttribute("data-filter");
+          applyCurrentFilter();
+        });
       });
     </script>
   </body>

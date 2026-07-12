@@ -248,6 +248,21 @@ export function find_document_shared(width, height) {
 
 /**
  * @param {ImageData} data
+ * @param {string} filter_type
+ * @param {string | null} [sign_color_name]
+ * @returns {ImageData}
+ */
+export function apply_filter(data, filter_type, sign_color_name) {
+    const ptr0 = passStringToWasm0(filter_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(sign_color_name) ? 0 : passStringToWasm0(sign_color_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.apply_filter(data, ptr0, len0, ptr1, len1);
+    return ret;
+}
+
+/**
+ * @param {ImageData} data
  * @param {Quad} region
  * @param {number} target_width
  * @param {number | null} [target_height]
