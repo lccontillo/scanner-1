@@ -449,7 +449,7 @@
       } from "./pkg/scanner.js";
       import { filterCanvas } from "./utils/filters.js";
 
-      const wasm = await init();
+      const wasm = await init(`./pkg/scanner_bg.wasm?v=${Date.now()}`);
 
       const fileInput = document.getElementById("fileInput");
       const findBtn = document.getElementById("findBtn");
