@@ -26,9 +26,16 @@ impl Image {
     //     edges
     // }
     pub fn document(&self) -> Option<ScoredQuad> {
-        let result = document::gradient_votes(self);
-        let mut edges = document::edges(&result, 0.05);
-        edges.truncate(20);
+        // Second Gaussian pass for stronger noise suppression
+        // (first pass was applied by the caller before calling document())
+        let blurred = self.gaussian();
+        let result = document::gradient_votes(&blurred);
+
+        // Adaptive threshold: raise on noisy images where avg gradient is high
+        let threshold = (0.05 + result.avg_grad * 0.03).min(0.20);
+
+        let mut edges = document::edges(&result, threshold);
+        edges.truncate(30);
         edges.sort_unstable_by(|a, b| b.cmp(a));
         document::documents(&result, &edges).get(0).copied()
     }

@@ -115,7 +115,7 @@ pub fn find_document(data: ImageData) -> Option<Quad> {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
     let rgba: RGBAImage = data.into();
-    let mut by = (rgba.width.min(rgba.height) as f32) / 360.0;
+    let mut by = (rgba.width.min(rgba.height) as f32) / 480.0;
     if by < 2.0 {
         by = 1.0
     }
@@ -150,7 +150,7 @@ pub fn find_document_shared(width: usize, height: usize) -> Option<Quad> {
         height,
     };
 
-    let mut by = (rgba.width.min(rgba.height) as f32) / 360.0;
+    let mut by = (rgba.width.min(rgba.height) as f32) / 480.0;
     if by < 2.0 {
         by = 1.0
     }
@@ -186,7 +186,7 @@ pub fn find_document_yuv_shared(width: usize, height: usize) -> Option<Quad> {
         height,
     };
 
-    let mut by = (src.width.min(src.height) as f32) / 360.0;
+    let mut by = (src.width.min(src.height) as f32) / 480.0;
     if by < 2.0 {
         by = 1.0
     }

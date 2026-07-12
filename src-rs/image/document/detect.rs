@@ -10,14 +10,14 @@ use super::{
 use alloc::vec::Vec;
 
 pub struct GradientVotesResult {
-    height: usize,
-    width: usize,
-    diag: f32,
-    num_bins: usize,
-    buf: Vec<f32>,
-    grad_buf: Vec<f32>,
-    avg_grad: f32,
-    max_grad: f32,
+    pub height: usize,
+    pub width: usize,
+    pub diag: f32,
+    pub num_bins: usize,
+    pub buf: Vec<f32>,
+    pub grad_buf: Vec<f32>,
+    pub avg_grad: f32,
+    pub max_grad: f32,
 }
 
 pub fn gradient_votes(source: &Image) -> GradientVotesResult {
@@ -222,6 +222,14 @@ fn right_err(l1: Line, l2: Line) -> f32 {
     err * err + 3.0
 }
 
+fn quad_area(q: &Quad) -> f32 {
+    // Shoelace formula for quadrilateral area
+    0.5 * ((q.a.x * q.b.y - q.b.x * q.a.y)
+         + (q.b.x * q.c.y - q.c.x * q.b.y)
+         + (q.c.x * q.d.y - q.d.x * q.c.y)
+         + (q.d.x * q.a.y - q.a.x * q.d.y)).abs()
+}
+
 pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad> {
     let &GradientVotesResult {
         width,
@@ -237,6 +245,10 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
     // Precompute reciprocals for division
     let inv_wf = 1.0 / wf;
     let inv_hf = 1.0 / hf;
+
+    // Minimum area filter: reject quads smaller than 2% of image
+    let image_area = wf * hf;
+    let min_area = image_area * 0.02;
 
     let intersection = |l1: Line, l2: Line| {
         let ang1 = l1.angle as usize;
@@ -255,10 +267,11 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
         let xr = x * inv_wf - 0.5;
         let yr = y * inv_hf - 0.5;
 
-        (Point { x, y }, xr * xr + yr * yr <= 0.55)
+        (Point { x, y }, xr * xr + yr * yr <= 0.70)
     };
     let iw = width as isize;
     let ih = height as isize;
+    let edge_threshold = avg_grad * 1.5;
     let score_between = |a: Point, b: Point| {
         let mut score = 0.0;
 
@@ -277,7 +290,10 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
 
         while x != xf || y != yf {
             if 0 <= x && 0 <= y && x < iw && y < ih {
-                score += unsafe { *grad_buf.as_ptr().offset(y * iw + x) } - avg_grad;
+                let grad_val = unsafe { *grad_buf.as_ptr().offset(y * iw + x) };
+                if grad_val > edge_threshold {
+                    score += grad_val - edge_threshold;
+                }
             }
 
             let e2 = error << 1;
@@ -318,9 +334,14 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
 
         let line_score = (l1.score * l2.score * l3.score * l4.score).powf(line_power);
 
+        // Area bonus: gently prefer larger quads
+        let area = quad_area(&quad);
+        let area_ratio = (area / image_area).clamp(0.01, 1.0);
+        let area_score = area_ratio.powf(0.3);
+
         ScoredQuad {
             quad,
-            score: edge_score * angle_score * line_score,
+            score: edge_score * angle_score * line_score * area_score,
         }
     };
     let mut quads = Vec::new();
@@ -338,18 +359,15 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
                                 let (i24, i24b) = intersection(l2, l4);
                                 let (i34, i34b) = intersection(l3, l4);
                                 if !i14b && i24b && i34b {
-                                    quads.push(scored_quad(
-                                        Quad {
-                                            a: i12,
-                                            b: i13,
-                                            c: i34,
-                                            d: i24,
-                                        },
-                                        l1,
-                                        l3,
-                                        l4,
-                                        l2,
-                                    ));
+                                    let quad = Quad {
+                                        a: i12,
+                                        b: i13,
+                                        c: i34,
+                                        d: i24,
+                                    };
+                                    if quad_area(&quad) >= min_area {
+                                        quads.push(scored_quad(quad, l1, l3, l4, l2));
+                                    }
                                 }
                             }
                         }
@@ -359,18 +377,15 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
                             let (_, i24b) = intersection(l2, l4);
                             let (i34, i34b) = intersection(l3, l4);
                             if i14b && !i24b && i34b {
-                                quads.push(scored_quad(
-                                    Quad {
-                                        a: i12,
-                                        b: i23,
-                                        c: i34,
-                                        d: i14,
-                                    },
-                                    l2,
-                                    l3,
-                                    l4,
-                                    l1,
-                                ));
+                                let quad = Quad {
+                                    a: i12,
+                                    b: i23,
+                                    c: i34,
+                                    d: i14,
+                                };
+                                if quad_area(&quad) >= min_area {
+                                    quads.push(scored_quad(quad, l2, l3, l4, l1));
+                                }
                             }
                         }
                     }
@@ -380,18 +395,15 @@ pub fn documents(result: &GradientVotesResult, lines: &[Line]) -> Vec<ScoredQuad
                         let (i24, i24b) = intersection(l2, l4);
                         let (_, i34b) = intersection(l3, l4);
                         if i14b && i24b && !i34b {
-                            quads.push(scored_quad(
-                                Quad {
-                                    a: i13,
-                                    b: i23,
-                                    c: i24,
-                                    d: i14,
-                                },
-                                l3,
-                                l2,
-                                l4,
-                                l1,
-                            ));
+                            let quad = Quad {
+                                a: i13,
+                                b: i23,
+                                c: i24,
+                                d: i14,
+                            };
+                            if quad_area(&quad) >= min_area {
+                                quads.push(scored_quad(quad, l3, l2, l4, l1));
+                            }
                         }
                     }
                 }
